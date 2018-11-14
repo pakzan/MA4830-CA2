@@ -6,6 +6,7 @@
 #include <sys/neutrino.h>
 #include <sys/mman.h>
 #include <math.h>
+#include <pthread.h>
 
 #define	INTERRUPT	  iobase[1] + 0		// Badr1 + 0 : also ADC register
 #define	MUXCHAN		  iobase[1] + 2		// Badr1 + 2
@@ -29,7 +30,7 @@
 #define	PACER3		  iobase[3] + a		// Badr3 + a
 #define	PACERCTL	  iobase[3] + b		// Badr3 + b
 
-#define DA_Data		iobase[4] + 0		// Badr4 + 0
+#define DA_Data		  iobase[4] + 0		// Badr4 + 0
 #define	DA_FIFOCLR	iobase[4] + 2		// Badr4 + 2
 
 #define NO_POINT    100
@@ -38,15 +39,23 @@
 // Global Variable
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 int badr[5];			// PCI 2.2 assigns 6 IO base addresses
+void *hdl;
+
+static unsigned int sine_wave[NO_POINT];
+static unsigned int sq_wave[NO_POINT];
+static unsigned int tri_wave[NO_POINT];
+static unsigned int saw_wave[NO_POINT];
+
 typedef struct {
-  int amp, mean, freq;
-} ch1, ch2;
+  float amp,
+        mean,
+        freq;
+} channel; channel ch1, ch2;
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 void f_PCIsetup(){
   struct pci_dev_info info;
-  void *hdl;
 
   uintptr_t iobase[6];
   uintptr_t dio_in;
@@ -88,15 +97,15 @@ void f_PCIsetup(){
     exit(1);
     }
 }
-void f_WaveGen(int * sine){
+void f_WaveGen(){
 
   int i;
   float dummy;
 
   //Sine wave array
   float delta = (2.0*3.142)/NO_POINT;
-  for(i=0; i<NO_POINT; i++){
-    dummy = sinf(float)(i*delta);
+  for(i=0; i<NO_POINT-1; i++){
+    dummy = (sinf(float)(i*delta)+1)*0xf000;
     sine_wave[i] = (unsigned) dummy;
   }
 
@@ -104,19 +113,59 @@ void f_WaveGen(int * sine){
   //Triangular wave array
   //Saw-tooth wave array
 }
+void *t_Wave(){
+  unsigned int current_sine_wave[] = sine_wave[];
+
+  while(1){
+    pthread_mutex_lock(mutex);
+    for(i=0;i<NO_POINT-1;i++){
+      //modulate point
+      current_sine_wave[i]=(current_sine_wave[i] + ch1.mean*0xf000)*ch1.amp;
+      //point printing to oscilloscope
+
+    }
+    pthread_mutex_unlock(mutex);
+  }
+}
+//void *t_HardwareInput()
+void *t_ScreenOutput(){
+  printf("Real Time Inputs are as follow:-\n\n");
+  printf("\t\tAmp.\tMean\tFreq.\n");
+  while(1){
+    printf("\rChannel 1: \t%2.2f\t%2.2f\t%2.2f", ch1.amp,ch1.mean,ch1.freq);
+  }
+}
+void f_termination(){
+  out16(DA_CTLREG,(short)0x0a23);
+  out16(DA_FIFOCLR,(short) 0);
+  out16(DA_Data, 0x8fff);					// Mid range - Unipolar
+
+  out16(DA_CTLREG,(short)0x0a43);
+  out16(DA_FIFOCLR,(short) 0);
+  out16(DA_Data, 0x8fff);
+
+  printf("\n\nExit Demo Program\n");
+  pthread_exit(NULL);
+  pci_detach_device(hdl);
+}
 
 int main() {
-  function_PCIsetup;
 
-  static unsigned int sine_wave[NO_POINT];
-  static unsigned int sq_wave[NO_POINT];
-  static unsigned int tri_wave[NO_POINT];
-  static unsigned int saw_wave[NO_POINT];
+  f_PCIsetup();
+  f_WaveGen();
 
-  f_WaveGen(sine_wave[0]);
+  printf("Initialisation Complete");
 
-  unsigned int i,count;
-  unsigned short chan;
+  if(pthread_create(NULL, NULL, &t_Wave, NULL)){
+    printf("ERROR; thread \"t_Wave\" not created.");
+  };
+  if(pthread_create(NULL, NULL, &t_HardwareInput, NULL)){
+    printf("ERROR; thread \"t_HardwareInput\" not created.");
+  };
+  if(pthread_create(NULL, NULL, &t_ScreenOutput, NULL)){
+    printf("ERROR; thread \"t_ScreenOutput\" not created.");
+  };
 
-  unsigned int data[100];
-  float delta,dummy;
+  while(1);   //unreachable code
+  f_termination();
+}
