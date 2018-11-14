@@ -151,9 +151,6 @@ void f_termination(){
 
 int main() {
 
-  //unsigned int count;
-  //unsigned short chan;
-
   f_PCIsetup();
   f_WaveGen();
 
