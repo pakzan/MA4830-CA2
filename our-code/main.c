@@ -39,6 +39,7 @@
 // Global Variable
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 int badr[5];			// PCI 2.2 assigns 6 IO base addresses
+void *hdl;
 
 static unsigned int sine_wave[NO_POINT];
 static unsigned int sq_wave[NO_POINT];
@@ -46,16 +47,15 @@ static unsigned int tri_wave[NO_POINT];
 static unsigned int saw_wave[NO_POINT];
 
 typedef struct {
-  int amp,
-      mean,
-      freq;
-} ch1, ch2;
+  float amp,
+        mean,
+        freq;
+} channel; channel ch1, ch2;
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 void f_PCIsetup(){
   struct pci_dev_info info;
-  void *hdl;
 
   uintptr_t iobase[6];
   uintptr_t dio_in;
@@ -120,7 +120,7 @@ void *t_Wave(){
     pthread_mutex_lock(mutex);
     for(i=0;i<NO_POINT-1;i++){
       //modulate point
-      current_sine_wave[i]=(current_sine_wave[i] + mean*0xf000)*amp;
+      current_sine_wave[i]=(current_sine_wave[i] + ch1.mean*0xf000)*ch1.amp;
       //point printing to oscilloscope
 
     }
@@ -129,17 +129,28 @@ void *t_Wave(){
 }
 //void *t_HardwareInput()
 void *t_ScreenOutput(){
-  printf("Real Time Inputs are as follow:-\n");
+  printf("Real Time Inputs are as follow:-\n\n");
+  printf("\t\tAmp.\tMean\tFreq.\n");
   while(1){
-    printf("\t\t\t\t\t\t Amp.\tMean\tFreq.\n")
-    printf("Channel 1: ")
+    printf("\rChannel 1: \t%2.2f\t%2.2f\t%2.2f", ch1.amp,ch1.mean,ch1.freq);
   }
+}
+void f_termination(){
+  out16(DA_CTLREG,(short)0x0a23);
+  out16(DA_FIFOCLR,(short) 0);
+  out16(DA_Data, 0x8fff);					// Mid range - Unipolar
 
+  out16(DA_CTLREG,(short)0x0a43);
+  out16(DA_FIFOCLR,(short) 0);
+  out16(DA_Data, 0x8fff);
+
+  printf("\n\nExit Demo Program\n");
+  pthread_exit(NULL);
+  pci_detach_device(hdl);
 }
 
 int main() {
 
-  int i, rt;  //rt: thread creation success/fail
   //unsigned int count;
   //unsigned short chan;
 
@@ -157,3 +168,7 @@ int main() {
   if(pthread_create(NULL, NULL, &t_ScreenOutput, NULL)){
     printf("ERROR; thread \"t_ScreenOutput\" not created.");
   };
+
+  while(1);   //unreachable code
+  f_termination();
+}
