@@ -33,6 +33,9 @@
 #define DA_Data		  iobase[4] + 0		// Badr4 + 0
 #define	DA_FIFOCLR	iobase[4] + 2		// Badr4 + 2
 
+#define BILLION 1000000000L
+#define MILLION 1000000L
+#define THOUSAND 1000L
 #define NO_POINT    100
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -40,6 +43,8 @@
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 int badr[5];			// PCI 2.2 assigns 6 IO base addresses
 void *hdl;
+uintptr_t dio_in;
+uint16_t adc_in;
 
 static unsigned int sine_wave[NO_POINT];
 static unsigned int sq_wave[NO_POINT];
@@ -52,14 +57,15 @@ typedef struct {
         freq;
 } channel; channel ch1, ch2;
 
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Functions
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 void f_PCIsetup(){
   struct pci_dev_info info;
-
   uintptr_t iobase[6];
-  uintptr_t dio_in;
-  uint16_t adc_in;
 
   printf("\fDemonstration Routine for PCI-DAS 1602\n\n");
 
@@ -98,7 +104,6 @@ void f_PCIsetup(){
     }
 }
 void f_WaveGen(){
-
   int i;
   float dummy;
 
@@ -113,28 +118,6 @@ void f_WaveGen(){
   //Triangular wave array
   //Saw-tooth wave array
 }
-void *t_Wave(){
-  unsigned int current_sine_wave[] = sine_wave[];
-
-  while(1){
-    pthread_mutex_lock(mutex);
-    for(i=0;i<NO_POINT-1;i++){
-      //modulate point
-      current_sine_wave[i]=(current_sine_wave[i] + ch1.mean*0xf000)*ch1.amp;
-      //point printing to oscilloscope
-
-    }
-    pthread_mutex_unlock(mutex);
-  }
-}
-//void *t_HardwareInput()
-void *t_ScreenOutput(){
-  printf("Real Time Inputs are as follow:-\n\n");
-  printf("\t\tAmp.\tMean\tFreq.\n");
-  while(1){
-    printf("\rChannel 1: \t%2.2f\t%2.2f\t%2.2f", ch1.amp,ch1.mean,ch1.freq);
-  }
-}
 void f_termination(){
   out16(DA_CTLREG,(short)0x0a23);
   out16(DA_FIFOCLR,(short) 0);
@@ -148,6 +131,79 @@ void f_termination(){
   pthread_exit(NULL);
   pci_detach_device(hdl);
 }
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Threads
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+void *t_Wave(){
+  unsigned int i;
+  unsigned int current1[NO_POINT],current2[NO_POINT];
+  float dummy1,dummy2;
+  struct timespec start1, stop1, start2, stop2;
+  double accum1, accum2;
+
+  while(1){
+    pthread_mutex_lock(mutex);
+
+    printf("\n\nWrite Sine Demo to multiple DAC\n");
+
+        //Channel 1
+    if (clock_gettime(CLOCK_REALTIME,&start1)==-1){
+      perror("clock gettime");
+      exit(EXIT_FAILURE);
+    }
+
+    for(i=0;i<NO_POINT;i++) {
+      dummy1= (sinw[i] + ch1.mean) * ch1.amp;
+      current1[i]= (unsigned) dummy1;			// add offset +  scale
+      out16(DA_CTLREG,0x0a23);			// DA Enable, #0, #1, SW 5V unipolar
+      out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
+      out16(DA_Data,(short) current1[i]);
+      delay (10+(ch1.freq-accum1)/NO_POINT);
+     }
+
+     if (clock_gettime(CLOCK_REALTIME,&stop1)==-1){
+       perror("clock gettime");
+       exit(EXIT_FAILURE);
+     }
+
+     accum1=(double)(stop1.tv_sec-start1.tv_sec)+(double)(stop1.tv_nsec-start1.tv_nsec)/BILLION;
+
+        //Channel 2
+     if (clock_gettime(CLOCK_REALTIME,&start2)==-1){
+       perror("clock gettime");
+       exit(EXIT_FAILURE);
+     }
+
+     for(i=0;i<NO_POINT;i++) {
+       dummy2= (sinw[i] + ch2.mean) * ch2.amp;
+       current2[i]= (unsigned) dummy2;			// add offset +  scale
+       out16(DA_CTLREG,0x0a43);			// DA Enable, #1, #1, SW 5V unipolar
+       out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
+       out16(DA_Data,(short) current2[i]);
+       delay (10+(ch2.freq-accum2)/NO_POINT);
+      }
+
+      if (clock_gettime(CLOCK_REALTIME,&stop2)==-1){
+        perror("clock gettime");
+        exit(EXIT_FAILURE);
+      }
+
+      accum2=(double)(stop2.tv_sec-start2.tv_sec)+(double)(stop2.tv_nsec-start2.tv_nsec)/BILLION;
+
+     pthread_mutex_unlock(mutex);
+  }
+}
+//void *t_HardwareInput()
+void *t_ScreenOutput(){
+  printf("Real Time Inputs are as follow:-\n\n");
+  printf("\t\tAmp.\tMean\tFreq.\n");
+  while(1){
+    printf("\rChannel 1: \t%2.2f\t%2.2f\t%2.2f", ch1.amp,ch1.mean,ch1.freq);
+  }
+}
+
 
 int main() {
 
