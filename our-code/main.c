@@ -32,6 +32,8 @@
 #define DA_Data		iobase[4] + 0		// Badr4 + 0
 #define	DA_FIFOCLR	iobase[4] + 2		// Badr4 + 2
 
+#define NO_POINT    100
+
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // Global Variable
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -42,54 +44,79 @@ typedef struct {
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+void f_PCIsetup(){
+  struct pci_dev_info info;
+  void *hdl;
+
+  uintptr_t iobase[6];
+  uintptr_t dio_in;
+  uint16_t adc_in;
+
+  printf("\fDemonstration Routine for PCI-DAS 1602\n\n");
+
+  memset(&info,0,sizeof(info));
+  if(pci_attach(0)<0) {
+    perror("pci_attach");
+    exit(EXIT_FAILURE);
+    }
+
+  // Vendor and Device ID
+  info.VendorId=0x1307;
+  info.DeviceId=0x01;
+
+  if ((hdl=pci_attach_device(0, PCI_SHARE|PCI_INIT_ALL, 0, &info))==0) {
+    perror("pci_attach_device");
+    exit(EXIT_FAILURE);
+    }
+
+  // Determine assigned BADRn IO addresses for PCI-DAS1602
+  printf("\nDAS 1602 Base addresses:\n\n");
+  for(i=0;i<5;i++) {
+    badr[i]=PCI_IO_ADDR(info.CpuBaseAddress[i]);
+    printf("Badr[%d] : %x\n", i, badr[i]);
+    }
+
+  printf("\nReconfirm Iobase:\n");  	// map I/O base address to user space
+  for(i=0;i<5;i++) {			// expect CpuBaseAddress to be the same as iobase for PC
+    iobase[i]=mmap_device_io(0x0f,badr[i]);
+    printf("Index %d : Address : %x ", i,badr[i]);
+    printf("IOBASE  : %x \n",iobase[i]);
+    }
+  					// Modify thread control privity
+  if(ThreadCtl(_NTO_TCTL_IO,0)==-1) {
+    perror("Thread Control");
+    exit(1);
+    }
+}
+void f_WaveGen(int * sine){
+
+  int i;
+  float dummy;
+
+  //Sine wave array
+  float delta = (2.0*3.142)/NO_POINT;
+  for(i=0; i<NO_POINT; i++){
+    dummy = sinf(float)(i*delta);
+    sine_wave[i] = (unsigned) dummy;
+  }
+
+  //Square wave array
+  //Triangular wave array
+  //Saw-tooth wave array
+}
+
 int main() {
-struct pci_dev_info info;
-void *hdl;
+  function_PCIsetup;
 
-uintptr_t iobase[6];
-uintptr_t dio_in;
-uint16_t adc_in;
+  static unsigned int sine_wave[NO_POINT];
+  static unsigned int sq_wave[NO_POINT];
+  static unsigned int tri_wave[NO_POINT];
+  static unsigned int saw_wave[NO_POINT];
 
-unsigned int i,count;
-unsigned short chan;
+  f_WaveGen(sine_wave[0]);
 
-unsigned int data[100];
-float delta,dummy;
+  unsigned int i,count;
+  unsigned short chan;
 
-printf("\fDemonstration Routine for PCI-DAS 1602\n\n");
-
-memset(&info,0,sizeof(info));
-if(pci_attach(0)<0) {
-  perror("pci_attach");
-  exit(EXIT_FAILURE);
-  }
-
-					// Vendor and Device ID
-info.VendorId=0x1307;
-info.DeviceId=0x01;
-
-if ((hdl=pci_attach_device(0, PCI_SHARE|PCI_INIT_ALL, 0, &info))==0) {
-  perror("pci_attach_device");
-  exit(EXIT_FAILURE);
-  }
-  					// Determine assigned BADRn IO addresses for PCI-DAS1602
-
-printf("\nDAS 1602 Base addresses:\n\n");
-for(i=0;i<5;i++) {
-  badr[i]=PCI_IO_ADDR(info.CpuBaseAddress[i]);
-  printf("Badr[%d] : %x\n", i, badr[i]);
-  }
-
-printf("\nReconfirm Iobase:\n");  	// map I/O base address to user space
-for(i=0;i<5;i++) {			// expect CpuBaseAddress to be the same as iobase for PC
-  iobase[i]=mmap_device_io(0x0f,badr[i]);
-  printf("Index %d : Address : %x ", i,badr[i]);
-  printf("IOBASE  : %x \n",iobase[i]);
-  }
-					// Modify thread control privity
-if(ThreadCtl(_NTO_TCTL_IO,0)==-1) {
-  perror("Thread Control");
-  exit(1);
-  }
-
-//******************************************************************************
+  unsigned int data[100];
+  float delta,dummy;
