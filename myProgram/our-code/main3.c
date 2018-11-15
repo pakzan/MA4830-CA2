@@ -386,6 +386,9 @@ void *t_ScreenOutput(void* arg){
 //++++++++++++++++++++++++++++++++++
 
 int main() {
+
+  system(su);
+  
   int j = 0; //thread count
   f_PCIsetup();
   f_WaveGen();
