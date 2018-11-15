@@ -192,16 +192,16 @@ int f_KeyboardInput(){
       //prompt user for selection
         //ch1 : wave_select1 = {1,2,3,4} ,1=sin,2=sq,3=tri,4=saw.
         //ch2 : wave_select2 = {1,2,3,4} no need mutex
-      //Write file
-      //stop
+  // 2) Write file
+  // 3)stop
         //f_termination()
-      //Return to display
+  // 4)Return to display
         //clear screen
         /*if(pthread_create(&thread[3], NULL, &t_ScreenOutput, NULL)){
            printf("ERROR; thread \"t_ScreenOutput\" not created.");
          };*/
-      //pthread_exit(NULL);
-      return(0);
+  //pthread_exit(NULL);
+  return(0);
 }
 
 
