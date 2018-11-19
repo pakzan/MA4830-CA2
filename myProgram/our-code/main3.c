@@ -219,6 +219,101 @@ void f_termination(){
   pci_detach_device(hdl);
 }
 
+// Start Keyboard
+int getInt(int lowLim, int highLim)
+{
+    int outnum;
+    while (true)
+    {
+        //get int input
+        scanf("%d", &outnum);
+        //flush input buffer
+        char c;
+        while ((c = getchar()) != '\n' && c != EOF) { }
+        
+        //check if outnum is within low and high limit
+        //otherwise continue loop
+        if (outnum >= lowLim && outnum <= highLim)
+            return outnum;
+        else
+            printf("Please input a valid number!\nYour number should be within %d and %d\n\n", lowLim, highLim);
+    }
+}
+
+void changeWavePrompt(){
+    printf("You have indicated to change waveform.\n Please select the channel:\ 
+                            \n1. Channel 1\
+                            \n2. Channel 2\n");
+    int chn = getInt(1, 2);
+                        
+    printf("Channel %d selected, please choose your desired waveform:\ 
+                        \n1. Sine Wave\
+                        \n2. Square Wave\
+                        \n3. Sawtooth Wave\
+                        \n4. Triangular Wave\n", chn);
+    //set wave for channel
+    if (chn == 1)
+    	wave_select1 = getInt(1, 4);
+    else
+    	wave_select2 = getInt(1, 4);
+	   
+    // print selected wave
+    char *wave_str[] = {"Sine","Square","Sawtooth","Triangular"};
+    printf("%s Wave Selected\n", wave_str[wave-1]);
+}
+	
+void save_file(char *filename, FILE *fp, char *data){
+    	printf("File saving in progress, please wait...");
+	if ((fp = fopen("file.data", "w")) == NULL){
+		perror("cannot open");
+	}
+	if (fputs(data, fp) == EOF){
+		printf("Cannot write");
+	}
+	fclose(fp);
+    	printf("File saved!");
+}
+	   
+void saveFilePrompt(){
+    char filename;
+    printf("You have indicated to save the output to a file.\nPlease name your file:\n");
+    scanf("%s", &filename);
+                        
+    FILE *fp;
+    char *str = "test";
+    save_file(filename, fp, str);
+}
+	   
+void f_KeyboardInput(){
+    //to stop screen output
+    pthread_cancel(3);
+	
+    printf("Keyboard interrupt detected, please choose your next action:\ 
+                        \n1. Change Waveform\
+                        \n2. Save and Output File\
+                        \n3. Cancel\
+                        \n4. End the Program\n");
+    int input = getInt(1, 4);
+    
+    if (input == 1){
+        changeWavePrompt();
+    }else if (input == 2){
+        saveFilePrompt();
+    }else if (input == 3){
+	//clear console screen
+        system("clear");
+	if(pthread_create(&thread[3], NULL, &t_ScreenOutput, NULL)){
+           printf("ERROR; thread \"t_ScreenOutput\" not created.");
+        }
+    }else if (input == 4){
+        printf("Bye bye\nHope to see you again soon :p");
+	f_termination();
+    }
+    pthread_exit(NULL);
+}
+
+// End Keyboard
+	   
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // Threads
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
