@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
 #include <unistd.h>
 #include <hw/pci.h>
 #include <hw/inout.h>
@@ -54,27 +56,27 @@ uintptr_t iobase[6];
 uint16_t adc_in[2];
 int chan;
 
-int wave[2];
-
 typedef struct {
   float amp,
-        mean,
-        freq;
-} chan_para;
+  mean,
+  freq;
+} channel_para;
 
 typedef int wave_pt[NO_POINT];
 
+channel_para *ch;
 wave_pt *wave_type;
-chan_para *ch;
 
-void f_malloc(void){
-	int i;
-  if((ch = (chan_para*)malloc(2 * sizeof(chan_para))) == NULL) {
+int wave[2];
+
+void f_Malloc(void){
+  int i;
+  if((ch = (channel_para*)malloc(2 * sizeof(channel_para))) == NULL) {
     printf("Not enough memory.\n");
-    exit(1);
   }
-  for(i=0; i<2; i++){ //initialize default parameter
-    ch[i].amp  = AMP;
+
+  for(i=0; i<2; i++){
+    ch[i].amp = AMP;
     ch[i].mean = MEAN;
     ch[i].freq = FREQ;
   }
@@ -83,26 +85,229 @@ void f_malloc(void){
     printf("Not enough memory.\n");
     exit(1);
   }
-
 }
 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Threads
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_t thread[NUM_THREADS];
+void *t_Wave1(void* arg){
+
+  unsigned int i;
+  unsigned int current1[NO_POINT],current2[NO_POINT];
+  float dummy1,dummy2;
+  struct timespec start1, stop1;
+  double accum1=0, accum2=0;
+
+  printf("Wave1 thread created.\n");
+
+  while(1){
+
+    //Channel 1
+    if (clock_gettime(CLOCK_REALTIME,&start1)==-1){
+      perror("clock gettime");
+      exit(EXIT_FAILURE);
+    }
+
+    switch(wave[0]){
+      case 1 :
+      for (i=0; i<NO_POINT; i++){
+        current1[i]= (wave_type[0][i] * ch[0].amp)*0.6 + (ch[0].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;			// scale + offset
+      }
+      for (i=0; i<NO_POINT; i++){
+        out16(DA_CTLREG,0x0a23);		  // DA Enable, #0, #1, SW 5V unipolar
+        out16(DA_FIFOCLR, 0);				  // Clear DA FIFO  buffer
+        out16(DA_Data,(short) current1[i]);
+        delay (((1/ch[0].freq*1000)-(accum1))/NO_POINT);
+      }
+      break;
+      case 2 :
+      for (i=0; i<NO_POINT; i++){
+        current1[i]= (wave_type[1][i] * ch[0].amp)*0.6 + (ch[0].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;			// scale + offset
+      }
+      for (i=0; i<NO_POINT; i++){
+        out16(DA_CTLREG,0x0a23);			// DA Enable, #0, #1, SW 5V unipolar
+        out16(DA_FIFOCLR, 0);				  // Clear DA FIFO  buffer
+        out16(DA_Data,(short) current1[i]);
+        delay (((1/ch[0].freq*1000)-(accum1))/NO_POINT);
+      }
+      break;
+      case 3 :
+      for (i=0; i<NO_POINT; i++){
+        current1[i]= (wave_type[2][i] * ch[0].amp)*0.6 + (ch[0].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;			// scale + offset
+      }
+      for (i=0; i<NO_POINT; i++){
+        out16(DA_CTLREG,0x0a23);			// DA Enable, #0, #1, SW 5V unipolar
+        out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
+        out16(DA_Data,(short) current1[i]);
+        delay (((1/ch[0].freq*1000)-(accum1))/NO_POINT);
+      }
+      break;
+      case 4 :
+      for (i=0; i<NO_POINT; i++){
+        current1[i]= (wave_type[3][i] * ch[0].amp)*0.6 + (ch[0].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;			// scale + offset
+      }
+      for (i=0; i<NO_POINT; i++){
+        out16(DA_CTLREG,0x0a23);			// DA Enable, #0, #1, SW 5V unipolar
+        out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
+        out16(DA_Data,(short) current1[i]);
+        delay (((1/ch[0].freq*1000)-(accum1))/NO_POINT);
+      }
+      break;
+    }
+
+    if (clock_gettime(CLOCK_REALTIME,&stop1)==-1){
+      perror("clock gettime");
+      exit(EXIT_FAILURE);
+    }
+
+    accum1=(double)(stop1.tv_sec-start1.tv_sec)+(double)(stop1.tv_nsec-start1.tv_nsec)/BILLION;
+  }
+}
+
+void *t_Wave2(void* arg){
+
+  unsigned int i;
+  unsigned int current2[NO_POINT];
+  struct timespec start2, stop2;
+  double accum2=0;
+
+  printf("Wave2 thread created.\n");
+
+  while(1){
+
+    //Channel 2
+    if (clock_gettime(CLOCK_REALTIME,&start2)==-1){
+      perror("clock gettime");
+      exit(EXIT_FAILURE);
+    }
+    switch(wave[1]){
+      case 1 :
+      for (i=0; i<NO_POINT; i++){
+        current2[i]= (wave_type[0][i] * ch[1].amp)*0.6 + (ch[1].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;			// scale + offset
+      }
+      for (i=0; i<NO_POINT; i++){
+        out16(DA_CTLREG,0x0a43);			// DA Enable, #0, #1, SW 5V unipolar
+        out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
+        out16(DA_Data,(short) current2[i]);
+        delay (((1/ch[1].freq*1000)-(accum2))/NO_POINT);
+      }
+      break;
+      case 2 :
+      for (i=0; i<NO_POINT; i++){
+        current2[i]= (wave_type[1][i] * ch[1].amp)*0.6 + (ch[1].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;			// scale + offset
+      }
+      for (i=0; i<NO_POINT; i++){
+        out16(DA_CTLREG,0x0a43);			// DA Enable, #0, #1, SW 5V unipolar
+        out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
+        out16(DA_Data,(short) current2[i]);
+        delay (((1/ch[1].freq*1000)-(accum2))/NO_POINT);
+      }
+      break;
+      case 3 :
+      for (i=0; i<NO_POINT; i++){
+        current2[i]= (wave_type[2][i] * ch[1].amp)*0.6 + (ch[1].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;			// scale + offset
+      }
+      for (i=0; i<NO_POINT; i++){
+        out16(DA_CTLREG,0x0a43);			// DA Enable, #0, #1, SW 5V unipolar
+        out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
+        out16(DA_Data,(short) current2[i]);
+        delay (((1/ch[1].freq*1000)-(accum2))/NO_POINT);
+      }
+      break;
+      case 4 :
+      for (i=0; i<NO_POINT; i++){
+        current2[i]= (wave_type[3][i] * ch[1].amp)*0.6 + (ch[1].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;			// scale + offset
+      }
+      for (i=0; i<NO_POINT; i++){
+        out16(DA_CTLREG,0x0a43);			// DA Enable, #0, #1, SW 5V unipolar
+        out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
+        out16(DA_Data,(short) current2[i]);
+        delay (((1/ch[1].freq*1000)-(accum2))/NO_POINT);
+      }
+      break;
+    }
+
+    if (clock_gettime(CLOCK_REALTIME,&stop2)==-1){
+      perror("clock gettime");
+      exit(EXIT_FAILURE);
+    }
+
+    accum2=(double)(stop2.tv_sec-start2.tv_sec)+(double)(stop2.tv_nsec-start2.tv_nsec)/BILLION;
+  }
+}
+
+void *t_HardwareInput(void* arg){
+
+  int mode;
+  unsigned int count;
+
+  printf("HardwaveInput thread created.\n");
+
+  while(1)  {
+    out8(DIO_CTLREG,0x90);					// Port A : Input,  Port B : Output,  Port C (upper | lower) : Output | Output
+    dio_in=in8(DIO_PORTA); 					// Read Port A
+
+
+    if((dio_in & 0x08) == 0x08) {
+      out8(DIO_PORTB, dio_in);					// output Port A value -> write to Port B
+
+      if((dio_in & 0x04) == 0x04) {
+        raise(SIGINT);
+      }
+      else if ((mode = dio_in & 0x03) != 0) {
+        count=0x00;
+
+        while(count <0x02) {
+          chan= ((count & 0x0f)<<4) | (0x0f & count);
+          out16(MUXCHAN,0x0D00|chan);		// Set channel	 - burst mode off.
+          delay(1);					// allow mux to settle
+          out16(AD_DATA,0); 				// start ADC
+          while(!(in16(MUXCHAN) & 0x4000));
+          adc_in[(int)count]=in16(AD_DATA);
+          count++;
+          delay(5);		// Write to MUX register - SW trigger, UP, DE, 5v, ch 0-7
+        }
+      }
+
+      switch ((int)mode) {
+        case 1:
+        ch[0].amp = (float)adc_in[0] * 5.00 / 0xffff; //scale from 16 bits to 5
+        ch[1].amp =(float)adc_in[1] * 5.00 / 0xffff; //scale from 16 bits to 5
+        break;
+        case 2:
+        ch[0].freq = ( float)adc_in[0] * 4.50 / 0xffff+0.5; //scale from 16 bits to 0.5 ~ 5
+        ch[1].freq = ( float)adc_in[1] * 4.50 / 0xffff+0.5; //scale from 16 bits to 0.5 ~ 5
+        break;
+        case 3:
+        ch[0].mean = ( float)adc_in[0] * 2.00 / 0xffff; //scale from 16 bits to 2.00
+        ch[1].mean = ( float)adc_in[1] * 2.00 / 0xffff; //scale from 16 bits to 2.00
+        break;
+      }
+    }	//if take input from keyboard
+    delay(100);
+  } //end of while
+} //end of thread
+
+void *t_ScreenOutput(void* arg){
+  sleep(1);
+  printf("Real Time Inputs are as follow:-\n\n");
+  printf("\t\tAmp.\tMean\tFreq.\n");
+  while(1){
+    printf("\nChannel 1: \t%2.2f\t%2.2f\t%2.2f", ch[0].amp , ch[0].mean, ch[0].freq);
+    printf("\nChannel 2: \t%2.2f\t%2.2f\t%2.2f\n\n", ch[1].amp , ch[1].mean, ch[1].freq);
+    fflush(stdout);
+    delay(500);
+  }
+}
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // Functions
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-
-
 void f_PCIsetup(){
   struct pci_dev_info info;
-
-
   unsigned int i;
-
-  printf("\fDemonstration Routine for PCI-DAS 1602\n\n");
 
   memset(&info,0,sizeof(info));
   if(pci_attach(0)<0) {
@@ -119,17 +324,16 @@ void f_PCIsetup(){
     exit(EXIT_FAILURE);
   }
 
-    //for hardware input
-  for(i=0;i<6;i++) {			// Another printf BUG ? - Break printf to two statements
+  //for hardware input
+  for(i=0;i<6;i++) {
     if(info.BaseAddressSize[i]>0) {
       printf("Aperture %d  Base 0x%x Length %d Type %s\n", i,
-        PCI_IS_MEM(info.CpuBaseAddress[i]) ?  (int)PCI_MEM_ADDR(info.CpuBaseAddress[i]) :
-        (int)PCI_IO_ADDR(info.CpuBaseAddress[i]),info.BaseAddressSize[i],
-        PCI_IS_MEM(info.CpuBaseAddress[i]) ? "MEM" : "IO");
+      PCI_IS_MEM(info.CpuBaseAddress[i]) ?  (int)PCI_MEM_ADDR(info.CpuBaseAddress[i]) :
+      (int)PCI_IO_ADDR(info.CpuBaseAddress[i]),info.BaseAddressSize[i],
+      PCI_IS_MEM(info.CpuBaseAddress[i]) ? "MEM" : "IO");
     }
   }
 
-  // Determine assigned BADRn IO addresses for PCI-DAS1602
   printf("\nDAS 1602 Base addresses:\n\n");
   for(i=0;i<5;i++) {
     badr[i]=PCI_IO_ADDR(info.CpuBaseAddress[i]);
@@ -142,27 +346,25 @@ void f_PCIsetup(){
     printf("Index %d : Address : %x ", i,badr[i]);
     printf("IOBASE  : %x \n",iobase[i]);
   }
-  					// Modify thread control privity
+  // Modify thread control privity
   if(ThreadCtl(_NTO_TCTL_IO,0)==-1) {
     perror("Thread Control");
     exit(1);
   }
 
-      // Initialise Board
+  // Initialise Board
   out16(INTERRUPT,0x60c0);		// sets interrupts	 - Clears
   out16(TRIGGER,0x2081);			// sets trigger control: 10MHz,clear,
-      // Burst off,SW trig.default:20a0
+  // Burst off,SW trig.default:20a0
   out16(AUTOCAL,0x007f);			// sets automatic calibration : default
-
   out16(AD_FIFOCLR,0); 			// clear ADC buffer
   out16(MUXCHAN,0x0900);		// Write to MUX register-SW trigger,UP,DE,5v,ch 0-0
-    // x x 0 0 | 1  0  0 1  | 0x 7   0 | Diff - 8 channels
-    // SW trig |Diff-Uni 5v| scan 0-7| Single - 16 channels
+  // x x 0 0 | 1  0  0 1  | 0x 7   0 | Diff - 8 channels
+  // SW trig |Diff-Uni 5v| scan 0-7| Single - 16 channels
 
-      //initialise port A, B
-   out8(DIO_CTLREG,0x90);		// Port A : Input Port B: Output
+  //initialise port A, B
+  out8(DIO_CTLREG,0x90);		// Port A : Input Port B: Output
 }
-
 
 void f_WaveGen(){
   int i;
@@ -171,11 +373,10 @@ void f_WaveGen(){
   //Sine wave array
   float delta = (2.0*3.142)/NO_POINT;
   for(i=0; i<NO_POINT; i++){
-    dummy = ((sinf((float)(i*delta))))*0x7fff/5;
+    dummy = ((i*delta))*0x7fff/5;
     wave_type[0][i] = dummy;
-   //printf("%d\n", wave_type[0][i]);
   }
-    //Square wave array
+  //Square wave array
   //the value of 2 in dummy when i<NO_POINT/2 indicates the value of 'ON'
   //the value of 0 in dummy when i<NO_POINT indicates the value of 'OFF'
   for(i=0;i<NO_POINT;i++){
@@ -205,6 +406,7 @@ void f_WaveGen(){
     wave_type[2][i] =  dummy /5;
   }
 }
+
 void f_termination(){
   out16(DA_CTLREG,(short)0x0a23);
   out16(DA_FIFOCLR,(short) 0);
@@ -213,289 +415,187 @@ void f_termination(){
   out16(DA_CTLREG,(short)0x0a43);
   out16(DA_FIFOCLR,(short) 0);
   out16(DA_Data, 0x8fff);
-
-  printf("\n\nExit Demo Program\n");
-  pthread_exit(NULL);
   pci_detach_device(hdl);
+
+  free((void *) ch);
+  free((void *) wave_type);
 }
 
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-// Threads
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-void *t_Wave1(void* arg){
-
-  unsigned int i;
-  unsigned int current1[NO_POINT],current2[NO_POINT];
-  float dummy1,dummy2;
-  struct timespec start1, stop1;
-  double accum1=0, accum2=0;
-
-  printf("Wave1 thread created.\n");
-
-  while(1){
-    //pthread_mutex_lock(&mutex);
-
-	//printf("wave1\n");
-
-        //Channel 1
-    if (clock_gettime(CLOCK_REALTIME,&start1)==-1){
-      perror("clock gettime");
-      exit(EXIT_FAILURE);
-    }
-
-        switch(wave[0]){
-        case 1 :
-        for (i=0; i<NO_POINT; i++){
-          current1[i]= (wave_type[0][i] * ch[0].amp)*0.6 + (ch[0].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;
-			// add offset +  scale
-       }
-       for (i=0; i<NO_POINT; i++){
-          out16(DA_CTLREG,0x0a23);			// DA Enable, #0, #1, SW 5V unipolar
-          out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
-          out16(DA_Data,(short) current1[i]);
-          delay (((1/ch[0].freq*1000)-(accum1))/NO_POINT);
-       }
-         break;
-        case 2 :
-        for (i=0; i<NO_POINT; i++){
-          current1[i]= (wave_type[1][i] * ch[0].amp)*0.6 + (ch[0].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;
-			// add offset +  scale
-        }
-        for (i=0; i<NO_POINT; i++){
-          out16(DA_CTLREG,0x0a23);			// DA Enable, #0, #1, SW 5V unipolar
-          out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
-          out16(DA_Data,(short) current1[i]);
-          delay (((1/ch[0].freq*1000)-(accum1))/NO_POINT);
-       }
-         break;
-        case 3 :
-        for (i=0; i<NO_POINT; i++){
-          current1[i]= (wave_type[3][i] * ch[0].amp)*0.6 + (ch[0].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;
-			// add offset +  scale
-        }
-        for (i=0; i<NO_POINT; i++){
-          out16(DA_CTLREG,0x0a23);			// DA Enable, #0, #1, SW 5V unipolar
-          out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
-          out16(DA_Data,(short) current1[i]);
-          delay (((1/ch[0].freq*1000)-(accum1))/NO_POINT);
-       }
-         break;
-        case 4 :
-        for (i=0; i<NO_POINT; i++){
-          current1[i]= (wave_type[2][i] * ch[0].amp)*0.6 + (ch[0].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;
-			// add offset +  scale
-       }
-       for (i=0; i<NO_POINT; i++){
-          out16(DA_CTLREG,0x0a23);			// DA Enable, #0, #1, SW 5V unipolar
-          out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
-          out16(DA_Data,(short) current1[i]);
-          delay (((1/ch[0].freq*1000)-(accum1))/NO_POINT);
-       }
-         break;
-      }
-
-    if (clock_gettime(CLOCK_REALTIME,&stop1)==-1){
-     perror("clock gettime");
-     exit(EXIT_FAILURE);
-    }
-
-    accum1=(double)(stop1.tv_sec-start1.tv_sec)+(double)(stop1.tv_nsec-start1.tv_nsec)/BILLION;
-    //pthread_mutex_unlock(&mutex);
- }
+// Start Keyboard
+void f_StrCat(char *s, const char *t){
+  while(*s != '\0')
+  s++;
+  while(*s++ = *t++);
 }
 
-void *t_Wave2(void* arg){
+int f_GetInt(int lowLim, int highLim)
+{
+  int outnum;
+  while (true)
+  {
+    char c;
 
-  unsigned int i;
-  unsigned int current2[NO_POINT];
-  struct timespec start2, stop2;
-  double accum2=0;
+    //get int input
+    scanf("%d", &outnum);
+    //flush input buffer
+    while ((c = getchar()) != '\n' && c != EOF) { }
 
-
-printf("Wave2 thread created.\n");
-
-  while(1){
-
-    //pthread_mutex_lock(&mutex);
-   //printf("wave2\n");
-      //Channel 2
-    if (clock_gettime(CLOCK_REALTIME,&start2)==-1){
-     perror("clock gettime");
-     exit(EXIT_FAILURE);
-    }
-
-        switch(wave[1]){
-        case 1 :
-        for (i=0; i<NO_POINT; i++){
-          current2[i]= (wave_type[0][i] * ch[1].amp)*0.6 + (ch[1].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;
-			// add offset +  scale
-          }
-        for (i=0; i<NO_POINT; i++){
-          out16(DA_CTLREG,0x0a43);			// DA Enable, #0, #1, SW 5V unipolar
-          out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
-          out16(DA_Data,(short) current2[i]);
-                delay (((1/ch[1].freq*1000)-(accum2))/NO_POINT);
-       }
-         break;
-        case 2 :
-        for (i=0; i<NO_POINT; i++){
-          current2[i]= (wave_type[1][i] * ch[1].amp)*0.6 + (ch[1].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;
-			// add offset +  scale
-        }
-         for (i=0; i<NO_POINT; i++){
-          out16(DA_CTLREG,0x0a43);			// DA Enable, #0, #1, SW 5V unipolar
-          out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
-          out16(DA_Data,(short) current2[i]);
-                delay (((1/ch[1].freq*1000)-(accum2))/NO_POINT);
-       }
-         break;
-        case 3 :
-        for (i=0; i<NO_POINT; i++){
-          current2[i]= (wave_type[3][i] * ch[1].amp)*0.6 + (ch[1].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;
-			// add offset +  scale
-        }
-         for (i=0; i<NO_POINT; i++){
-          out16(DA_CTLREG,0x0a43);			// DA Enable, #0, #1, SW 5V unipolar
-          out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
-          out16(DA_Data,(short) current2[i]);
-                delay (((1/ch[1].freq*1000)-(accum2))/NO_POINT);
-       }
-         break;
-        case 4 :
-        for (i=0; i<NO_POINT; i++){
-          current2[i]= (wave_type[2][i] * ch[1].amp)*0.6 + (ch[1].mean*0.8 + 1.2)*0x7fff/5 * 2.5 ;
-			// add offset +  scale
-       }
-         for (i=0; i<NO_POINT; i++){
-          out16(DA_CTLREG,0x0a43);			// DA Enable, #0, #1, SW 5V unipolar
-          out16(DA_FIFOCLR, 0);				// Clear DA FIFO  buffer
-          out16(DA_Data,(short) current2[i]);
-                delay (((1/ch[1].freq*1000)-(accum2))/NO_POINT);
-       }
-         break;
-      }
-
-    if (clock_gettime(CLOCK_REALTIME,&stop2)==-1){
-      perror("clock gettime");
-      exit(EXIT_FAILURE);
-    }
-
-    accum2=(double)(stop2.tv_sec-start2.tv_sec)+(double)(stop2.tv_nsec-start2.tv_nsec)/BILLION;
-
-   // pthread_mutex_unlock(&mutex);
+    //check if outnum is within low and high limit
+    //otherwise continue loop
+    if (outnum >= lowLim && outnum <= highLim)
+    return outnum;
+    else
+    printf("Please input a valid number!\nYour number should be within %d and %d\n\n", lowLim, highLim);
   }
 }
 
-void *t_HardwareInput(void* arg){
+void f_ChangeWavePrompt(){
+  int chn;
+  const char *wave_str[] = {"Sine","Square","Sawtooth","Triangular"};
 
-  int mode;
-  unsigned int count;
+  printf("\nYou have indicated to change waveform.\nPlease select the channel:
+  \n1. Channel 1
+  \n2. Channel 2\n\n");
 
-  printf("HardwaveInput thread created.\n");
+  chn =  f_GetInt(1, 2);
 
-  while(1)  {
-	//printf("\nDIO Functions\n");
-	out8(DIO_CTLREG,0x90);					// Port A : Input,  Port B : Output,  Port C (upper | lower) : Output | Output
+  printf("\nChannel %d selected, please choose your desired waveform:
+  \n1. Sine Wave
+  \n2. Square Wave
+  \n3. Sawtooth Wave
+  \n4. Triangular Wave\n\n", chn);
+  //set wave for channel
+  wave[chn-1] = f_GetInt(1, 4);
 
-	dio_in=in8(DIO_PORTA); 					// Read Port A
-	//printf("Port A : %02x\n", dio_in);
+  // print selected wave
+  printf("\n%s Wave Selected\n\n", wave_str[wave[chn-1]-1]);
+}
 
-	out8(DIO_PORTB, dio_in);					// output Port A value -> write to Port B
+void f_SaveFile(char *filename, FILE *fp, char *data){
+  char *filetype = ".txt";
+  f_f_StrCat(filename, filetype);
+  printf("\nFile saving in progress, please wait...\n");
 
+  if ((fp = fopen(filename, "w")) == NULL){
+    perror("cannot open\n\n");
+  }
+  if (fputs(data, fp) == EOF){
+    printf("Cannot write\n\n");
+  }
+  fclose(fp);
+  printf("File saved!\n\n");
+}
 
-    if((dio_in & 0x08) == 0x08) {
+void f_SaveFilePrompt(){
+  char filename[10];
+  FILE *fp;
+  char data[100];
+  printf("\n\nYou have indicated to save the output to a file.\nPlease name your file:\n\n");
+  scanf("%s", &filename);
 
-    	//printf("In");
-      if((dio_in & 0x04) == 0x04) {
+  //set data to store into file
+  sprintf(data,
+    "\t\t\t\t\t\tAmp. Mean Freq.\n
+    Channel 1: \t%2.2f\t%2.2f\t%2.2f\n
+    Channel 2: \t%2.2f\t%2.2f\t%2.2f\n\n"
+    , ch[0].amp , ch[0].mean, ch[0].freq,  ch[1].amp , ch[1].mean, ch[1].freq);
 
-        while(1) raise(SIGINT);
-
-        //Termination of program
-      }
-      else if ((mode = dio_in & 0x03) != 0) {
-        //printf("\n\nRead multiple ADC\n");
-        count=0x00;
-
-        while(count <0x02) {
-          chan= ((count & 0x0f)<<4) | (0x0f & count);
-          out16(MUXCHAN,0x0D00|chan);		// Set channel	 - burst mode off.
-          delay(1);					// allow mux to settle
-          out16(AD_DATA,0); 				// start ADC
-          while(!(in16(MUXCHAN) & 0x4000));
-          adc_in[(int)count]=in16(AD_DATA);
-                    // print ADC
-          //printf("ADC Chan: %02x Data [%3d]: %4x \n",chan,(int)count, adc_in[count]);
-          fflush( stdout );
-          count++;
-          delay(5);		// Write to MUX register - SW trigger, UP, DE, 5v, ch 0-7
-        }
-      }
-      //pthread_mutex_lock(&mutex);
-      //printf("lock input\n");
-
-      switch ((int)mode) {
-        case 1:
-        ch[0].amp = (float)adc_in[0] * 5.00 / 0xffff; //scale from 16 bits to 5
-        ch[1].amp =(float)adc_in[1] * 5.00 / 0xffff; //scale from 16 bits to 5
-        //printf("AMP Chan#0 Data [%3.2f] \t Chan#1 Data [%3.2f]\n", ch[0].amp, ch[1].amp);
-        break;
-        case 2:
-        ch[0].freq = ( float)adc_in[0] * 4.50 / 0xffff+0.5; //scale from 16 bits to .5-5
-        ch[1].freq = ( float)adc_in[1] * 4.50 / 0xffff+0.5; //scale from 16 bits to .5-5
-        //printf("Freq Chan#0 Data [%3.2f] \t Chan#1 Data [%3.2f]\n", ch[0].freq, ch[1].freq);
-        break;
-        case 3:
-        ch[0].mean = ( float)adc_in[0] * 2.00 / 0xffff; //scale from 16 bits to 10.00
-        ch[1].mean = ( float)adc_in[1] * 2.00 / 0xffff; //scale from 16 bits to 10.00
-        //printf("MEAN Chan#0 Data [%3.2f] \t Chan#1 Data [%3.2f]\n", ch[0].mean, ch[1].mean);
-        break;
-      }
-     //pthread_mutex_unlock(&mutex);
-     //printf("unlock input\n");
-
-    }	//if take input from keyboard
-
-  } //end of while
-} //end of thread
-
-void *t_ScreenOutput(void* arg){
-  printf("Real Time Inputs are as follow:-\n\n");
-  printf("\t\tAmp.\tMean\tFreq.\n");
-  while(1){
-    printf("\nChannel 1: \t%2.2f\t%2.2f\t%2.2f", ch[0].amp , ch[0].mean, ch[0].freq);
-    printf("\nChannel 2: \t%2.2f\t%2.2f\t%2.2f\n\n", ch[1].amp , ch[1].mean, ch[1].freq);
-    fflush(stdout);
-    delay(500);
+    f_SaveFile(filename, fp, data);
   }
 }
 
+void f_ReadFile(char *filename, FILE *fp){
+  const char *filetype = ".txt";
+  int count;
+  float temp_amp[2], temp_mean[2], temp_freq[2];
+  f_StrCat(filename, filetype);
+  printf("\nFile reading in progress, please wait...\n");
 
+  if ((fp = fopen(filename, "r")) == NULL){
+    perror("cannot open\n\n");
+  }
+  //get variables from file
+  count = fscanf(fp, "%*[^C]Channel 1: %f %f %f Channel 2: %f %f %f",
+  &temp_amp[0], &temp_mean[0], &temp_freq[0],
+  &temp_amp[1], &temp_mean[1], &temp_freq[1]);
+  //if received all 6 values successfully, set values to variables
+  if (count == 6){
+    int i;
+    for(i = 0; i < 2; i++){
+      ch[i].amp = temp_amp[i];
+      ch[i].mean = temp_mean[i];
+      ch[i].freq = temp_freq[i];
+      //printf("%f, %f, %f", temp_amp[i], temp_mean[i], temp_freq[i]);
+    }
+    printf("Read File Successfully\n\n");
+  }else{
+    printf("Read File Fail\n\n");
+  }
+  fclose(fp);
+}
 
+void f_ReadFilePrompt(){
+  char filename[10];
+  FILE *fp;
+  char data[100];
+  printf("\n\nYou have indicated to read the file.\nPlease name your file:\n\n");
+  scanf("%s", &filename);
+
+  f_ReadFile(filename, fp);
+}
+
+void f_KeyboardInput(){
+  int input;
+
+  //to stop screen output
+  if(pthread_cancel(thread[3]) == 0)
+  printf("Killed screen thread\n");
+
+  while(true){
+    printf("\nMain Menu\nPlease choose your next action:\n\n");
+    printf("1. Change Waveform
+    \n2. Save and Output File
+    \n3. Read File
+    \n4. Return to Display
+    \n5. End the Program\n\n");
+    input = f_GetInt(1, 5);
+
+    if (input == 1){
+      f_f_ChangeWavePrompt();
+    }else if (input == 2){
+      f_SaveFilePrompt();
+    }else if (input == 3){
+      f_ReadFilePrompt();
+    }else if (input == 4){
+      //clear console screen
+      system("clear");
+      if(pthread_create(&thread[3], NULL, &t_ScreenOutput, NULL)){
+        printf("ERROR; thread \"t_ScreenOutput\" not created.");
+      } printf("Screen Output main %d\n", thread[3]);
+      break;
+    }else if (input == 5){
+      printf("\nBye bye\nHope to see you again soon :p\n");
+      raise(SIGINT);
+    }
+  }
+}
+// End Keyboard
 
 void signal_handler(){
   int t;
+  pthread_t temp;
+  temp = pthread_self();
   printf("\nHardware Termination Raised\n");
-  for(t=0;t<NUM_THREADS-1;t++){
-    if(pthread_cancel(thread[t]) == 0)
-    printf("Killed thread %d\n",t);
-    else printf("Nothing to kill\n")	;
-	delay(100);
-  }
-  if (t ==  NUM_THREADS-1)
-  {
-    printf("Killed thread %d\n",t);
-    printf("BYE\n");
-    raise(SIGUSR1);
-    pthread_cancel(thread[t]);
-    //exit(0);
+  for(t = 3; t >= 0; t--){
+    if(thread[t] != temp) {
+      pthread_cancel(thread[t]);
+      printf("Thread %d is killed.\n",thread[t]);
     }
-
-
-  fflush(stdout);
-  delay(1000);
-
-}
+  }// for loop
+  printf("Thread %d is killed.\n", temp);
+  pthread_exit(NULL);
+  delay(500);
+} //handler
 
 
 //++++++++++++++++++++++++++++++++++
@@ -504,19 +604,17 @@ void signal_handler(){
 
 int main(int argc, char* argv[]) {
 
-  int i,j=0; //thread count
-
-  //printf("Prompt SU");
+  int i;
+  int j=0; //thread count
 
   f_PCIsetup();
+  f_Malloc();
   f_WaveGen();
-  f_malloc();
+
   signal(SIGINT, signal_handler);
+  signal(SIGQUIT, f_KeyboardInput);
 
-  printf("%d\n",argc);
-
-    if(argc>=2){
-    //pthread_mutex_lock(&mutex);
+  if(argc>=2){
     for(i=1;i<argc;i++){
       if(strcmp(argv[i],"-sine")==0){
         printf("%d. Sine wave chosen as wave\n",i);
@@ -535,38 +633,31 @@ int main(int argc, char* argv[]) {
         wave[i-1]=4;
       }
     }//end of for loop, checking argv[]
-    //pthread_mutex_unlock(&mutex);
   }
-    if (argc==1) {wave[0]=2; wave[1]=1;} printf("Sine Sine\n");
-    if (argc==2) wave[2]=1;
-
+  if (argc==1) {
+    wave[0]=1; wave[1]=2;
+  }
+  if (argc==2) {
+    wave[1]=2;
+  }
 
   printf("Initialisation Complete\n");
 
+  if(pthread_create(&thread[j], NULL, &t_HardwareInput, NULL)){
+    printf("ERROR; thread \"t_HardwareInput\" not created.");
+  }j++;
+
   if(pthread_create(&thread[j], NULL, &t_Wave1, NULL)){
-   printf("ERROR; thread \"t_Wave1\" not created.");
+    printf("ERROR; thread \"t_Wave1\" not created.");
   } j++;
 
-   if(pthread_create(&thread[j], NULL, &t_Wave2, NULL)){
-   printf("ERROR; thread \"t_Wave2\" not created.");
-   } j++;
+  if(pthread_create(&thread[j], NULL, &t_Wave2, NULL)){
+    printf("ERROR; thread \"t_Wave2\" not created.");
+  } j++;
 
   if(pthread_create(&thread[j], NULL, &t_ScreenOutput, NULL)){
     printf("ERROR; thread \"t_ScreenOutput\" not created.");
   } j++;
 
-      if(pthread_create(&thread[j], NULL, &t_HardwareInput, NULL)){
-    printf("ERROR; thread \"t_HardwareInput\" not created.");
-  }j++;
-
-
-
-  pause();   //unreachable code
-  //pthread_exit(NULL);
-  printf("BYE");
-  fflush(stdout);
-  delay(1000);
-  exit (0);
- //while(1) printf("IM BACK!!!");
-  //f_termination();
+  pthread_exit(NULL);
 }
