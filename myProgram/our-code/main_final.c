@@ -165,31 +165,29 @@
 void f_ArgCheck(int argc, char* argv[]){
 	int i;
 	char **p_to_arg = &argv[1];
+	
+	//set sine wave as default waveform for both channel
+	wave[0]=1; wave[1]=2;
+	
 	if(argc>=2){
 		for(i=1;i<argc;i++,p_to_arg++){
 			if(strcmp(*(p_to_arg),"-sine")==0){
 				printf("\n%d. Sine wave chosen for Channel %d.\n",i,i);
 				wave[i-1]=1;
 			}
-			if(strcmp(*(p_to_arg),"-square")==0){
+			else if(strcmp(*(p_to_arg),"-square")==0){
 				printf("\n%d. Square wave chosen for Channel %d.\n",i,i);
 				wave[i-1]=2;
 			}
-			if(strcmp(*(p_to_arg),"-saw")==0){
+			else if(strcmp(*(p_to_arg),"-saw")==0){
 				printf("\n%d. Saw wave chosen  for Channel %d.\n",i,i);
 				wave[i-1]=3;
 			}
-			if(strcmp(*(p_to_arg),"-tri")==0){
+			else if(strcmp(*(p_to_arg),"-tri")==0){
 				printf("\n%d. Triangular wave chosen for Channel %d.\n",i,i);
 				wave[i-1]=4;
 			}
       }//end of for loop, checking argv[]
-    }
-    if (argc==1) { //if no terminal argument is input, set sine wave as default waveform for both channel
-    	wave[0]=1; wave[1]=2;
-    }
-    if (argc==2) { //if only 1 argument is input, set sine wave as default waveform the other channel
-    	wave[1]=2;
     }
   }
 
@@ -566,7 +564,7 @@ void f_termination(){
     printf("Thread %d is killed.\n", temp);
     pthread_exit(NULL);
     delay(500);
-  } //handler
+  } //handler
 
 
   void signal_handler2(){
